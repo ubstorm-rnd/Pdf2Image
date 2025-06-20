@@ -273,7 +273,7 @@ namespace pdf2png
             IntPtr doc = PdfiumNative.FPDF_LoadDocument(utf8Path, null);
             if (doc == IntPtr.Zero)
             {
-                WriteErrorLog(new Exception("PDF 문서를 열 수 없습니다."), "");
+                WriteErrorLog(new Exception("PDF 문서를 열 수 없습니다."), inputPdf.FullName);
                 System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
                 Environment.Exit(0);
             }
