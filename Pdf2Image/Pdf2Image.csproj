@@ -6,8 +6,8 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{89112524-1249-458E-86A5-CCBD58D65C16}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>pdf2png</RootNamespace>
-    <AssemblyName>pdf2png</AssemblyName>
+    <RootNamespace>pdf2Image</RootNamespace>
+    <AssemblyName>pdf2image</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>

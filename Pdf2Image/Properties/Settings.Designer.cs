@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace pdf2png.Properties {
+namespace pdf2Image.Properties {
     
     
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
@@ -25,7 +25,7 @@ namespace pdf2png.Properties {
         
         [global::System.Configuration.ApplicationScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("1.3")]
+        [global::System.Configuration.DefaultSettingValueAttribute("1")]
         public float ImgResolutionLevel {
             get {
                 return ((float)(this["ImgResolutionLevel"]));

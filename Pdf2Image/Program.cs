@@ -38,7 +38,7 @@ internal static class PdfiumNative
     public static extern void FPDF_CloseDocument(IntPtr document);
 }
 
-namespace pdf2png
+namespace pdf2Image
 {
     internal static class NativeMethods
     {
@@ -211,7 +211,8 @@ namespace pdf2png
 
             string appPath = GetProgramFilePath("");
 
-            string arch = IntPtr.Size == 8 ? "x64" : "x86";
+            //string arch = IntPtr.Size == 8 ? "x64" : "x86";
+            string arch = "x86";
             string dllPath = Path.Combine(appPath, arch);
             Environment.SetEnvironmentVariable("PATH", dllPath + ";" + Environment.GetEnvironmentVariable("PATH"));
 
@@ -219,8 +220,8 @@ namespace pdf2png
             string pdf_filename = null;
             string png_filename = null;
            
-            float ImgResolutionLevel = pdf2png.Properties.Settings.Default.ImgResolutionLevel;
-            float ImgQuality = pdf2png.Properties.Settings.Default.ImgQuality;
+            float ImgResolutionLevel = pdf2Image.Properties.Settings.Default.ImgResolutionLevel;
+            float ImgQuality = pdf2Image.Properties.Settings.Default.ImgQuality;
 
             if (args.Length == 2)
             {
@@ -247,7 +248,7 @@ namespace pdf2png
             }
             else
             {
-                Console.WriteLine("USAGE : pdf2png pdf_filename img_filename_%d");
+                Console.WriteLine("USAGE : pdf2Image pdf_filename img_filename_%d");
                 Environment.Exit(0);
             }
 
