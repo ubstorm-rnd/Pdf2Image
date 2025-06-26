@@ -223,6 +223,8 @@ namespace pdf2Image
             float ImgResolutionLevel = pdf2Image.Properties.Settings.Default.ImgResolutionLevel;
             float ImgQuality = pdf2Image.Properties.Settings.Default.ImgQuality;
 
+            string pdf_passwd = null;
+
             if (args.Length == 2)
             {
                 pdf_filename = args[0];
@@ -240,6 +242,14 @@ namespace pdf2Image
                 png_filename = args[1];
                 png_AppCode = args[2];
                 ImgResolutionLevel = float.Parse(args[3], CultureInfo.InvariantCulture.NumberFormat);
+            }
+            else if (args.Length == 5)
+            {
+                pdf_filename = args[0];
+                png_filename = args[1];
+                png_AppCode = args[2];
+                ImgResolutionLevel = float.Parse(args[3], CultureInfo.InvariantCulture.NumberFormat);
+                pdf_passwd = args[4];
             }
             else if (args.Length == 0)
             {
@@ -271,11 +281,11 @@ namespace pdf2Image
             }
 
             byte[] utf8Path = System.Text.Encoding.UTF8.GetBytes(inputPdf.FullName + "\0");
-            IntPtr doc = PdfiumNative.FPDF_LoadDocument(utf8Path, null);
+            IntPtr doc = PdfiumNative.FPDF_LoadDocument(utf8Path, pdf_passwd);
             if (doc == IntPtr.Zero)
             {
                 WriteErrorLog(new Exception("PDF 문서를 열 수 없습니다."), inputPdf.FullName);
-                System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
+                System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL passwd");
                 Environment.Exit(0);
             }
 
