@@ -68,7 +68,7 @@ namespace pdf2Image
             {
                 string error;
                 string stLogDir = GetAppRoot(out error);
-                string logFilePath = Path.Combine(stLogDir, "application_log.txt");
+                string logFilePath = Path.Combine(stLogDir, "application_log.log");
 
                 Directory.CreateDirectory(Path.GetDirectoryName(logFilePath)); // 경로 없으면 생성
 
@@ -205,6 +205,102 @@ namespace pdf2Image
             dest.UnlockBits(destData);
         }
 
+        /**
+         * Softcamp DRM API : 복호화
+         **/
+        private static bool CSDecFile(string srcPath, string destPath)
+        {
+            int iResult = -1;
+            bool bResult = false;
+
+            DSCOMCSLINKLib.CSLinker DSApi = new DSCOMCSLINKLib.CSLinker();
+            try
+            {
+                iResult = DSApi.CSDecryptFile(srcPath, destPath);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("복호화실패");//에러처리 각 사이트에 맞게 처리
+                throw ex;
+            }
+            Console.WriteLine("복호화 : " + iResult);
+
+            if (iResult == 1)
+            {
+                bResult = true;
+            }
+
+            return bResult;
+        }
+
+        /**
+         * Softcamp DRM API : 암호화여부
+         **/
+        private static bool CSIsEnc(string srcPath)
+        {
+            int iResult = -1;
+            bool bResult = false;
+
+            DSCOMCSLINKLib.CSLinker DSApi = new DSCOMCSLINKLib.CSLinker();
+
+            iResult = DSApi.CSIsEncryptedFile(srcPath);
+            Console.WriteLine("암호화 판별여부 : " + iResult);
+            WriteErrorLog(new Exception("DS Client Agent 체크"), "암호화 판별여부 : " + iResult);
+
+            if (iResult == 0)
+            {
+                Console.WriteLine("암호화되있지 않음");
+                WriteErrorLog(new Exception("DS Client Agent 체크"), "암호화되있지 않음");
+            }
+            else if (iResult == 1)
+            {
+                bResult = true;
+                Console.WriteLine("암호화되있음");
+                WriteErrorLog(new Exception("DS Client Agent 체크"), "암호화되있음");
+            }
+            else if (iResult == -1)
+            {
+                Console.WriteLine("C / S 연동 모듈 로드 실패");  //에러처리 각 사이트에 맞게 처리
+                WriteErrorLog(new Exception("DS Client Agent 체크"), "C / S 연동 모듈 로드 실패");
+            }
+
+            return bResult;
+        }
+
+        /**
+         * Softcamp DRM API : DS Client Agent 실행 유,무 및 로그인 유.무 체크 함수
+         **/
+        private static bool CSCheckAgent()
+        {
+            int iResult = -1;
+            bool bResult = false;
+
+            DSCOMCSLINKLib.CSLinker DSApi = new DSCOMCSLINKLib.CSLinker();
+
+            iResult = DSApi.CSCheckDSAgent();
+            Console.WriteLine("실행상태 판별여부 : " + iResult);  //2인경우 로그인 상태
+            WriteErrorLog(new Exception("DS Client Agent 체크"), "실행상태 판별여부 : " + iResult);
+            if (iResult == 0)
+            {
+                Console.WriteLine("DS Client Agent가 실행 되지 않은 상태");
+                WriteErrorLog(new Exception("DS Client Agent 체크"), "DS Client Agent가 실행 되지 않은 상태");
+            }
+            else if (iResult == 1)
+            {
+                Console.WriteLine("DS Client Agent 실행 상태이며 로그아웃 상태");
+                WriteErrorLog(new Exception("DS Client Agent 체크"), "DS Client Agent 실행 상태이며 로그아웃 상태");
+            }
+            else if(iResult == 2)
+            {
+                bResult = true;
+                Console.WriteLine("DS Client Agent 실행 상태이며 로그인 상태");
+                WriteErrorLog(new Exception("DS Client Agent 체크"), "DS Client Agent 실행 상태이며 로그인 상태");
+            }
+
+            return bResult;
+        }
+
+
         static void Main(string[] args)
         {
             String stCurrentDir = System.Environment.CurrentDirectory;
@@ -222,6 +318,8 @@ namespace pdf2Image
            
             float ImgResolutionLevel = pdf2Image.Properties.Settings.Default.ImgResolutionLevel;
             float ImgQuality = pdf2Image.Properties.Settings.Default.ImgQuality;
+
+            int DrmType = pdf2Image.Properties.Settings.Default.DrmType;    // 0 : none, 1 : softcamp, 2 : 파수
 
             string pdf_passwd = null;
 
@@ -256,6 +354,10 @@ namespace pdf2Image
                 pdf_filename = GetProgramFilePath("test.pdf");
                 png_filename = GetProgramFilePath("converted.jpg");
             }
+            else if (args.Length == 1)  // 이미지와 같은 단독 복호화 대상 파일인 경우
+            {
+                pdf_filename = args[0];
+            }
             else
             {
                 Console.WriteLine("USAGE : pdf2Image pdf_filename img_filename_%d");
@@ -267,8 +369,79 @@ namespace pdf2Image
             String ubiformPath = stCurrentDir.LastIndexOf("UBIReport4Inst") != -1 ?
                 stCurrentDir + "\\" + appName : stCurrentDir + "\\UBIReport4Inst\\" + appName;
 
+            WriteErrorLog(new Exception("DRM 사용 체크"), "DrmType======" + DrmType);
+
             // PDF FIle로 부터 페이지 크기 정보를 얻어온다.
-            System.IO.FileInfo inputPdf = new FileInfo(pdf_filename);
+            System.IO.FileInfo inputPdf = null;
+            try
+            {
+                pdf_filename = pdf_filename.Replace("\"", "");
+                inputPdf = new FileInfo(pdf_filename);
+            }
+            catch(Exception ex)
+            {
+                WriteErrorLog(ex, pdf_filename);
+                System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
+                Environment.Exit(0);
+            }
+
+            if (DrmType != 0)
+            {
+                switch(DrmType)
+                {
+                    case 1:
+
+                        // DR로그인 체크
+                        if (CSCheckAgent() == false)
+                        {
+                            WriteErrorLog(new Exception("DS Client Agent 체크"), "DS Client Agent가 실행 되지 않았거나 로그인 되지 않은 상태입니다.");
+                            System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
+                            Environment.Exit(0);
+                        }
+
+                        if (CSIsEnc(pdf_filename) == true)
+                        {
+                            try
+                            {
+                                CSDecFile(pdf_filename, pdf_filename);
+                            }
+                            catch (Exception ex)
+                            {
+                                WriteErrorLog(ex, pdf_filename);
+                                System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
+                                Environment.Exit(0);
+                            }
+                        }
+                        
+                        break;
+                    case 2:
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+
+            if (args.Length == 1)  // 이미지와 같은 단독 복호화 대상 파일인 경우
+            {
+                Console.WriteLine("Conversion is successful.");
+                WriteErrorLog(new Exception("Conversion is successful."), "");
+
+                try
+                {
+                    String sResult = String.Format("pdf2image SUCCESS");
+                    System.Diagnostics.Process.Start(ubiformPath, sResult);
+                }
+                catch (Exception ex)
+                {
+                    WriteErrorLog(ex, "");
+                }
+
+                Environment.Exit(0);
+            }
+
+
+            // 이후 부터는 PDF에 대한 작업           
             try
             {
                 PdfiumNative.FPDF_InitLibrary();
