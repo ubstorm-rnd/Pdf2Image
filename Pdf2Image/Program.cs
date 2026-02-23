@@ -7,6 +7,14 @@ using System.Reflection;
 using System.Text;
 using System.Runtime.InteropServices;
 using System.Linq;
+using System.Security.Cryptography;
+
+/**
+ * 변환로직 설명
+ * 
+ * 1. DRM사용시 - PDF와 이미지 모두 원본은 그대로 두고, 암호화되어 있으면 원본을 복호화해서 에디터로부터 전달받은 TargetFIle 경로에 파일을 생성하여 사용한다. 암호화되어 있지 않아도 복호화만 안할뿐이지 Target으로 원본파일을 복제하여 사용한다.
+ * 
+ **/
 
 internal static class PdfiumNative
 {
@@ -221,9 +229,11 @@ namespace pdf2Image
             catch (Exception ex)
             {
                 Console.WriteLine("복호화실패");//에러처리 각 사이트에 맞게 처리
+                WriteErrorLog(new Exception("복호화"), "복호화실패");
                 throw ex;
             }
             Console.WriteLine("복호화 : " + iResult);
+            WriteErrorLog(new Exception("복호화 : "), "복호화결과 : " + iResult);
 
             if (iResult == 1)
             {
@@ -290,7 +300,7 @@ namespace pdf2Image
                 Console.WriteLine("DS Client Agent 실행 상태이며 로그아웃 상태");
                 WriteErrorLog(new Exception("DS Client Agent 체크"), "DS Client Agent 실행 상태이며 로그아웃 상태");
             }
-            else if(iResult == 2)
+            else if (iResult == 2)
             {
                 bResult = true;
                 Console.WriteLine("DS Client Agent 실행 상태이며 로그인 상태");
@@ -298,6 +308,55 @@ namespace pdf2Image
             }
 
             return bResult;
+        }
+
+        private static bool CopyFileSafe(string source, string dest)
+        {
+            bool bResult = false;
+
+            WriteErrorLog(new Exception("File Copy Util : "), "파일복사 시작");
+
+            if (!File.Exists(source))
+            {
+                Console.WriteLine("원본 파일이 없습니다.", source);
+                WriteErrorLog(new FileNotFoundException("File Copy Util"), "원본 파일이 없습니다. " + source);
+            }
+
+            string dir = Path.GetDirectoryName(dest);
+            if (!Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+
+            File.Copy(source, dest, true);
+
+            bResult = true;
+            WriteErrorLog(new Exception("File Copy Util : "), "파일복사 성공 " + dest);
+
+            return bResult;
+        }
+
+
+        private static bool DeleteFileSafe(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+
+                WriteErrorLog(new Exception("File Delete Util : "), "파일삭제성공 " + path);
+                return true;
+            }
+            catch (IOException ex)
+            {
+                WriteErrorLog(new Exception("File Delete Util : "), "파일 삭제 실패 " + ex.Message);
+                return false;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                WriteErrorLog(new Exception("File Delete Util : "), "권한 오류 " + ex.Message);
+                return false;
+            }
         }
 
 
@@ -315,7 +374,10 @@ namespace pdf2Image
             string png_AppCode = "002";  // 001 : UBIFORM, 002: MySuit
             string pdf_filename = null;
             string png_filename = null;
-           
+
+            string pdf_dec_filename = null;
+            string png_dec_filename = null;
+
             float ImgResolutionLevel = pdf2Image.Properties.Settings.Default.ImgResolutionLevel;
             float ImgQuality = pdf2Image.Properties.Settings.Default.ImgQuality;
 
@@ -323,10 +385,17 @@ namespace pdf2Image
 
             string pdf_passwd = null;
 
-            if (args.Length == 2)
+            Boolean isPdfFile = true;
+
+            if (args.Length == 2)   // PDF외의 Image와 같은 단독파일의 복호화 처리
             {
+                /*
                 pdf_filename = args[0];
                 png_filename = args[1];
+                */
+                png_filename = args[0];
+                png_dec_filename = args[1];
+                isPdfFile = false;
             }
             else if (args.Length == 3)
             {
@@ -354,13 +423,17 @@ namespace pdf2Image
                 pdf_filename = GetProgramFilePath("test.pdf");
                 png_filename = GetProgramFilePath("converted.jpg");
             }
+            /*
             else if (args.Length == 1)  // 이미지와 같은 단독 복호화 대상 파일인 경우
             {
                 pdf_filename = args[0];
             }
+            */
             else
             {
-                Console.WriteLine("USAGE : pdf2Image pdf_filename img_filename_%d");
+                //Console.WriteLine("USAGE : pdf2Image pdf_filename img_filename_%d");
+                WriteErrorLog(new Exception("Argument Exception"), "USAGE : pdf2Image pdf_filename img_filename");
+
                 Environment.Exit(0);
             }
 
@@ -371,23 +444,22 @@ namespace pdf2Image
 
             WriteErrorLog(new Exception("DRM 사용 체크"), "DrmType======" + DrmType);
 
-            // PDF FIle로 부터 페이지 크기 정보를 얻어온다.
-            System.IO.FileInfo inputPdf = null;
-            try
+            if (isPdfFile)
             {
                 pdf_filename = pdf_filename.Replace("\"", "");
-                inputPdf = new FileInfo(pdf_filename);
+                pdf_dec_filename = pdf_filename;
             }
-            catch(Exception ex)
+            else
             {
-                WriteErrorLog(ex, pdf_filename);
-                System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
-                Environment.Exit(0);
+                png_filename = png_filename.Replace("\"", "");
+
+                FileInfo fPbg = new FileInfo(png_filename);                
+                png_dec_filename = png_dec_filename.Replace("\"", "") + fPbg.Name;
             }
 
             if (DrmType != 0)
             {
-                switch(DrmType)
+                switch (DrmType)
                 {
                     case 1:
 
@@ -399,20 +471,78 @@ namespace pdf2Image
                             Environment.Exit(0);
                         }
 
-                        if (CSIsEnc(pdf_filename) == true)
+                        if (isPdfFile)
                         {
-                            try
+                            if (CSIsEnc(pdf_filename) == true)
                             {
-                                CSDecFile(pdf_filename, pdf_filename);
+                                try
+                                {
+                                    pdf_dec_filename = pdf_filename + "dec.pdf";
+                                    if (CSDecFile(pdf_filename, pdf_dec_filename) == false)
+                                    {
+                                        WriteErrorLog(new Exception("DS Client Agent 체크"), "복호화에 실패했습니다.");
+                                        System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
+                                        Environment.Exit(0);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    WriteErrorLog(ex, pdf_filename);
+                                    System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
+                                    Environment.Exit(0);
+                                }
                             }
-                            catch (Exception ex)
+                            else
                             {
-                                WriteErrorLog(ex, pdf_filename);
-                                System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
-                                Environment.Exit(0);
+                                try
+                                {
+                                    pdf_dec_filename = pdf_filename + "dec.pdf";
+                                    //CSDecFile(pdf_filename, pdf_dec_filename);
+                                    CopyFileSafe(pdf_filename, pdf_dec_filename);
+                                }
+                                catch (Exception ex)
+                                {
+                                    WriteErrorLog(ex, pdf_filename);
+                                    System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
+                                    Environment.Exit(0);
+                                }
+                            }
+
+                        }
+                        else
+                        {
+                            if (CSIsEnc(png_filename) == true)
+                            {
+                                try
+                                {
+                                    if (CSDecFile(png_filename, png_dec_filename) == false)
+                                    {
+                                        WriteErrorLog(new Exception("DS Client Agent 체크"), "복호화에 실패했습니다. src=" + png_filename + ", target=" + png_dec_filename);
+                                        System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
+                                        Environment.Exit(0);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    WriteErrorLog(ex, pdf_filename);
+                                    System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
+                                    Environment.Exit(0);
+                                }
+                            }
+                            else
+                            {
+                                try
+                                {
+                                    CopyFileSafe(png_filename, png_dec_filename);
+                                }
+                                catch (Exception ex)
+                                {
+                                    WriteErrorLog(ex, pdf_filename);
+                                    System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
+                                    Environment.Exit(0);
+                                }
                             }
                         }
-                        
                         break;
                     case 2:
                         break;
@@ -422,7 +552,7 @@ namespace pdf2Image
             }
 
 
-            if (args.Length == 1)  // 이미지와 같은 단독 복호화 대상 파일인 경우
+            if (isPdfFile == false)  // 이미지와 같은 단독 복호화 대상 파일인 경우
             {
                 Console.WriteLine("Conversion is successful.");
                 WriteErrorLog(new Exception("Conversion is successful."), "");
@@ -442,11 +572,24 @@ namespace pdf2Image
 
 
             // 이후 부터는 PDF에 대한 작업           
+            // PDF FIle로 부터 페이지 크기 정보를 얻어온다.
+            System.IO.FileInfo inputPdf = null;
+            try
+            {
+                inputPdf = new FileInfo(pdf_dec_filename);
+            }
+            catch (Exception ex)
+            {
+                WriteErrorLog(ex, pdf_dec_filename);
+                System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
+                Environment.Exit(0);
+            }
+
             try
             {
                 PdfiumNative.FPDF_InitLibrary();
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 WriteErrorLog(ex, dllPath);
                 System.Diagnostics.Process.Start(ubiformPath, "pdf2image FAIL");
@@ -475,7 +618,7 @@ namespace pdf2Image
                 double pageWidth = PdfiumNative.FPDF_GetPageWidth(page);
                 double pageHeight = PdfiumNative.FPDF_GetPageHeight(page);
 
-                int dpi = (int) Math.Round(96 * ImgResolutionLevel);
+                int dpi = (int)Math.Round(96 * ImgResolutionLevel);
                 int width = (int)(pageWidth * dpi / 72.0);
                 int height = (int)(pageHeight * dpi / 72.0);
                 Console.WriteLine($"Rendering page {i + 1}: {width}x{height}");
@@ -549,6 +692,11 @@ namespace pdf2Image
 
             PdfiumNative.FPDF_CloseDocument(doc);
             PdfiumNative.FPDF_DestroyLibrary();
+
+            if (DrmType == 1)
+            {
+                DeleteFileSafe(pdf_dec_filename);
+            }
 
             Console.WriteLine("Conversion is successful.");
             WriteErrorLog(new Exception("Conversion is successful."), "");
