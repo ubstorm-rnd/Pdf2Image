@@ -399,9 +399,14 @@ namespace pdf2Image
             }
             else if (args.Length == 3)
             {
+                /*
                 pdf_filename = args[0];
                 png_filename = args[1];
+                */
+                png_filename = args[0];
+                png_dec_filename = args[1];
                 png_AppCode = args[2];
+                isPdfFile = false;
             }
             else if (args.Length == 4)
             {
@@ -435,6 +440,19 @@ namespace pdf2Image
                 WriteErrorLog(new Exception("Argument Exception"), "USAGE : pdf2Image pdf_filename img_filename");
 
                 Environment.Exit(0);
+            }
+
+            // png_AppCode = "002:1" 과 같이 AppCode : DrmType으로 들어오는경우 처리
+            int idx = png_AppCode.IndexOf(':');
+            {
+                if (idx > -1)
+                {
+                    string left = png_AppCode.Substring(0, idx);
+                    string right = png_AppCode.Substring(idx + 1);
+
+                    png_AppCode = left;
+                    DrmType = int.Parse(right);
+                }
             }
 
             String appName = png_AppCode.Equals("001") ? "UBIFORM Editor.exe" : "MySuit Editor.exe";
